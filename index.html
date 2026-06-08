@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B2L6 互動式中英雙色對齊句型重組</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #F8FAFC;
+            --container-bg: #FFFFFF;
+            --text-main: #1E293B;
+            --border-color: #CBD5E1;
+            --success-light: #E8F5E9;
+            --success-border: #A5D6A7;
+            --wrong-light: #FFEBEE;
+            --wrong-border: #EF9A9A;
+            --warning-color: #D84315;
+        }
+        
+        /* 語意區塊專屬顏色 (高對比、好閱讀) */
+        .color-0 { background-color: #2980b9 !important; color: white !important; } /* 藍：主詞/核心 */
+        .color-1 { background-color: #27ae60 !important; color: white !important; } /* 綠：動詞/動作 */
+        .color-2 { background-color: #d35400 !important; color: white !important; } /* 橘：受詞/地方 */
+        .color-3 { background-color: #8e44ad !important; color: white !important; } /* 紫：介系詞/修飾 */
+        .color-4 { background-color: #c0392b !important; color: white !important; } /* 紅：時間/子句/額外 */
+        .color-5 { background-color: #16a085 !important; color: white !important; } /* 青：額外補充 */
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 850px;
+            width: 100%;
+            background: var(--container-bg);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            transition: transform 0.1s ease-in-out;
+        }
+        /* 答錯震動特效 */
+        .shake {
+            animation: shake 0.4s ease-in-out;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+        h1 {
+            text-align: center;
+            color: #334155;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+        }
+        /* 頁籤導覽 */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #E2E8F0;
+            padding-bottom: 12px;
+        }
+        .tab-btn {
+            background: none;
+            border: 2px solid #3b82f6;
+            color: #3b82f6;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        .tab-btn:hover { background-color: #EFF6FF; }
+        .tab-btn.active { background-color: #3b82f6; color: white; }
+
+        .progress {
+            text-align: center;
+            color: #64748B;
+            margin-bottom: 15px;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .instructions {
+            background-color: #F1F5F9;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+            border-left: 4px solid #3b82f6;
+        }
+        /* 答題與選擇區 */
+        .drop-zone {
+            min-height: 70px;
+            background-color: #FCFDFE;
+            border: 2px dashed #94A3B8;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .pool {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 25px;
+            min-height: 70px;
+            background-color: #F8FAFC;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #E2E8F0;
+        }
+        /* 可點擊區塊 */
+        .chunk {
+            padding: 12px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 1.1rem;
+            font-weight: 500;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.06);
+            transition: all 0.15s ease;
+        }
+        .chunk:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.12);
+        }
+        
+        .actions { text-align: center; }
+        button.btn {
+            background-color: #10B981;
+            color: white;
+            border: none;
+            padding: 12px 35px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-weight: bold;
+        }
+        button.btn:hover { background-color: #059669; }
+        button.btn:disabled { background-color: #CBD5E1; cursor: not-allowed; }
+
+        /* 回饋顯示面板 */
+        .feedback {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+            animation: fadeIn 0.35s ease-out;
+        }
+        .feedback.correct {
+            background-color: var(--success-light);
+            border: 1px solid var(--success-border);
+            display: block;
+        }
+        .feedback.wrong {
+            background-color: var(--wrong-light);
+            border: 1px solid var(--wrong-border);
+            display: block;
+        }
+        .hint-text {
+            color: var(--warning-color);
+            font-weight: bold;
+            margin-top: 8px;
+            font-size: 1rem;
+            line-height: 1.4;
+        }
+        .translation {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin: 15px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            border-left: 5px solid #009688;
+            line-height: 1.6;
+        }
+        .translation span {
+            margin: 0 2px;
+            padding: 1px 4px;
+            border-radius: 4px;
+            background-color: #F8FAFC; 
+        }
+        .tips {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #F59E0B;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        .tips b { color: #B45309; }
+        
+        .next-btn-container {
+            margin-top: 20px;
+            text-align: right;
+        }
+        button.btn-next { background-color: #3B82F6; }
+        button.btn-next:hover { background-color: #2563EB; }
+        button.btn-audio { background-color: #8B5CF6; margin-right: 10px; }
+        button.btn-audio:hover { background-color: #7C3AED; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="main-container">
+    <h1>📝 B2L6 句型與色彩對齊重組練習</h1>
+    
+    <div class="tabs">
+        <button class="tab-btn active" id="tab-p137" onclick="switchTab('p137')">課本 p.137-138</button>
+        <button class="tab-btn" id="tab-p139" onclick="switchTab('p139')">課本 p.139-140</button>
+    </div>
+
+    <div class="progress" id="progress-text">題目 1 / 12</div>
+    
+    <div class="instructions">
+        💡 <b>學習提示：</b> 相同顏色的英文區塊與中文單字互為對譯。請點擊深色方塊組合出正確句子！<br>
+        <i>(請特別注意：中文的橘色/紅色部位常常會跑到前面去喔！)</i>
+    </div>
+
+    <div class="drop-zone" id="answer-zone"></div>
+    <div class="pool" id="word-pool"></div>
+
+    <div class="actions">
+        <button class="btn" id="check-btn" onclick="checkAnswer()">檢查答案</button>
+    </div>
+
+    <div class="feedback" id="feedback-zone">
+        <div id="feedback-msg" style="font-weight: bold; font-size: 1.2rem;"></div>
+        <div id="hint-msg" class="hint-text"></div>
+        <div class="translation" id="translation-text"></div>
+        <div class="tips" id="tips-text"></div>
+        
+        <div class="next-btn-container">
+            <button class="btn btn-audio" onclick="playCurrentTTS()" id="audio-btn" style="display: none;">🔊 聽完整朗讀</button>
+            <button class="btn btn-next" onclick="nextQuestion()" id="next-btn">下一題 ➔</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------------- Web Audio API 音效 ----------------
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq, type, duration) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+    function playCorrectSound() {
+        playTone(523.25, 'sine', 0.08);
+        setTimeout(() => playTone(659.25, 'sine', 0.08), 80);
+        setTimeout(() => playTone(783.99, 'sine', 0.15), 160);
+    }
+    function playWrongSound() {
+        playTone(280, 'triangle', 0.12);
+        setTimeout(() => playTone(220, 'triangle', 0.2), 120);
+    }
+
+    // ---------------- TTS 語音 ----------------
+    function playTTS(text) {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.85; 
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+
+    // ---------------- B2L6 題庫資料 ----------------
+    // 顏色代碼：0=藍 1=綠 2=橘 3=紫 4=紅
+    const questionData = {
+        p137: [
+            {
+                chunks: ["Tourists", "often fall", "victim", "to", "pickpockets."],
+                translationHtml: "中譯：<span style='color:#2980b9'>遊客</span><span style='color:#27ae60'>經常淪為</span><span style='color:#c0392b'>扒手</span><span style='color:#8e44ad'>的</span><span style='color:#d35400'>受害者</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>fall victim to...</b>：成為...的受害者。 (注意介系詞用 to)"
+            },
+            {
+                chunks: ["The advertisement", "for the new toy", "is attracting", "many children's", "attention."],
+                translationHtml: "中譯：<span style='color:#27ae60'>這款新玩具的</span><span style='color:#2980b9'>廣告</span><span style='color:#d35400'>正在吸引</span><span style='color:#8e44ad'>許多孩子的</span><span style='color:#c0392b'>注意力</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. 看顏色的對比：英文把 for the new toy 放廣告後面；中文則把綠色字移到最前面修飾廣告！"
+            },
+            {
+                chunks: ["Janice promised", "to call", "her parents", "every day", "when she left home."],
+                translationHtml: "中譯：<span style='color:#2980b9'>珍妮絲承諾</span><span style='color:#c0392b'>當她離家時，</span><span style='color:#8e44ad'>每天</span><span style='color:#27ae60'>打電話給</span><span style='color:#d35400'>她的父母</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>promise to V.</b>：承諾去做某事。<br>2. 時間副詞片語 (when...) 在英文常放句尾，中文卻習慣放在動詞前面先交代時間！"
+            },
+            {
+                chunks: ["The groom", "made a promise", "to love", "the bride", "forever."],
+                translationHtml: "中譯：<span style='color:#2980b9'>新郎</span><span style='color:#27ae60'>許下承諾</span><span style='color:#c0392b'>永遠</span><span style='color:#d35400'>愛著</span><span style='color:#8e44ad'>新娘</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>make a promise</b>：許下承諾/諾言。"
+            },
+            {
+                chunks: ["That fake copy", "of the Mona Lisa", "is worth", "nothing."],
+                translationHtml: "中譯：<span style='color:#27ae60'>蒙娜麗莎的</span><span style='color:#2980b9'>那幅贗品</span><span style='color:#d35400'>價值</span><span style='color:#8e44ad'>為零(毫無價值)</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>be worth nothing</b>：毫無價值。<br>2. fake copy: 假冒的副本/贗品。"
+            },
+            {
+                chunks: ["The hotel", "is hiring", "more workers", "for", "the busy season."],
+                translationHtml: "中譯：<span style='color:#2980b9'>這家飯店</span><span style='color:#8e44ad'>為了</span><span style='color:#c0392b'>旺季</span><span style='color:#27ae60'>正在雇用</span><span style='color:#d35400'>更多員工</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>hire</b>：雇用 (動詞)。<br>2. <b>busy season</b>：旺季/繁忙的季節。"
+            },
+            {
+                chunks: ["The clerk", "persuaded me", "to buy", "the latest", "cellphone."],
+                translationHtml: "中譯：<span style='color:#2980b9'>店員</span><span style='color:#27ae60'>說服我</span><span style='color:#d35400'>去買</span><span style='color:#8e44ad'>最新款的</span><span style='color:#c0392b'>手機</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>persuade sb. to V.</b>：說服某人去做某事。"
+            },
+            {
+                chunks: ["My salary", "is paid", "into my account", "every", "month."],
+                translationHtml: "中譯：<span style='color:#2980b9'>我的薪水</span><span style='color:#8e44ad'>每個</span><span style='color:#c0392b'>月</span><span style='color:#27ae60'>都會被匯入</span><span style='color:#d35400'>我的帳戶</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>account</b>：帳戶/帳號。<br>2. is paid 是被動語態，表示薪水「被」支付入帳戶。"
+            },
+            {
+                chunks: ["Details", "of our products", "can be found", "on", "our website."],
+                translationHtml: "中譯：<span style='color:#27ae60'>我們產品的</span><span style='color:#2980b9'>詳細資訊</span><span style='color:#d35400'>可以被找到</span><span style='color:#8e44ad'>在</span><span style='color:#c0392b'>我們的網站上</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>details of...</b>：...的細節/詳細資訊。<br>2. 在網站上，介系詞習慣搭配 on。"
+            },
+            {
+                chunks: ["Sarah", "received", "a package", "from her mother", "yesterday."],
+                translationHtml: "中譯：<span style='color:#2980b9'>莎拉</span><span style='color:#c0392b'>昨天</span><span style='color:#27ae60'>收到了</span><span style='color:#8e44ad'>來自她母親的</span><span style='color:#d35400'>一個包裹</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>receive sth. from sb.</b>：從某人那裡收到某物。"
+            },
+            {
+                chunks: ["I would like to", "take the job", "because of", "its flexible", "working hours."],
+                translationHtml: "中譯：<span style='color:#d35400'>因為</span><span style='color:#8e44ad'>它彈性的</span><span style='color:#c0392b'>工作時間</span>，<span style='color:#2980b9'>我想要</span><span style='color:#27ae60'>接下這份工作</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>flexible</b>：彈性的/靈活的。<br>2. <b>because of + N.</b>：因為... (後接名詞片語)。"
+            },
+            {
+                chunks: ["I need to withdraw", "some money", "from my bank account", "to pay", "the rent."],
+                translationHtml: "中譯：<span style='color:#2980b9'>我需要提領</span><span style='color:#27ae60'>一些錢</span><span style='color:#d35400'>從我的銀行帳戶</span><span style='color:#8e44ad'>來支付</span><span style='color:#c0392b'>房租</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>withdraw money from...</b>：從...提領金錢。"
+            }
+        ],
+        p139: [
+            {
+                chunks: ["Many people", "are doubtful", "about the safety", "of", "that old bridge."],
+                translationHtml: "中譯：<span style='color:#2980b9'>許多人</span><span style='color:#8e44ad'>對於</span><span style='color:#c0392b'>那座舊橋的</span><span style='color:#d35400'>安全性</span><span style='color:#27ae60'>感到懷疑</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>be doubtful about...</b>：對...感到懷疑/有疑慮。"
+            },
+            {
+                chunks: ["The hunter", "is tracking", "an animal", "by following", "its footprints."],
+                translationHtml: "中譯：<span style='color:#2980b9'>那名獵人</span><span style='color:#8e44ad'>藉由跟隨</span><span style='color:#c0392b'>牠的腳印</span><span style='color:#27ae60'>正在追蹤</span><span style='color:#d35400'>一隻動物</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>track</b>：(動詞) 追蹤。<br>2. <b>by + V-ing</b>：藉由...的方式。"
+            },
+            {
+                chunks: ["The hikers", "followed", "the track", "to", "a small house."],
+                translationHtml: "中譯：<span style='color:#2980b9'>那些登山客</span><span style='color:#27ae60'>沿著</span><span style='color:#d35400'>這條小徑</span><span style='color:#8e44ad'>前往</span><span style='color:#c0392b'>一間小屋</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>track</b>：(名詞) 小徑/軌道。<br>2. 同樣是 track，上一題當動詞，這題當名詞，注意詞性轉換！"
+            },
+            {
+                chunks: ["The scammer", "cheated", "the old woman", "out of", "a lot of money."],
+                translationHtml: "中譯：<span style='color:#2980b9'>那名詐騙者</span><span style='color:#27ae60'>欺騙了</span><span style='color:#d35400'>那位老婦人</span>並<span style='color:#8e44ad'>騙走了</span><span style='color:#c0392b'>一大筆錢</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>cheat sb. out of sth.</b>：騙取某人的某物 (很常考的搭配片語！)"
+            },
+            {
+                chunks: ["The boy", "was caught", "cheating", "on", "the exam."],
+                translationHtml: "中譯：<span style='color:#2980b9'>這男孩</span><span style='color:#8e44ad'>在</span><span style='color:#c0392b'>這場考試中</span><span style='color:#27ae60'>被抓到</span><span style='color:#d35400'>作弊</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>cheat on the exam</b>：在考試中作弊。<br>2. be caught + V-ing：被抓到正在做..."
+            },
+            {
+                chunks: ["Drivers and riders", "need to", "watch out for", "people who are", "crossing the street."],
+                translationHtml: "中譯：<span style='color:#2980b9'>駕駛與騎士們</span><span style='color:#27ae60'>需要</span><span style='color:#d35400'>留意</span><span style='color:#8e44ad'>那些正在</span><span style='color:#c0392b'>過馬路的人</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>watch out for...</b>：注意/留意... (重要片語！)"
+            },
+            {
+                chunks: ["Wayne", "called the police", "right away", "when he saw", "a man breaking in."],
+                translationHtml: "中譯：<span style='color:#2980b9'>韋恩</span><span style='color:#8e44ad'>當他看到</span><span style='color:#c0392b'>一名男子闖入時，</span><span style='color:#d35400'>立刻</span><span style='color:#27ae60'>報了警</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>right away</b>：立刻、馬上。<br>2. see + 受詞 + V-ing：看到某人正在..."
+            },
+            {
+                chunks: ["Please", "keep safety", "in mind", "when you are", "playing sports."],
+                translationHtml: "中譯：<span style='color:#2980b9'>請</span><span style='color:#8e44ad'>當你在</span><span style='color:#c0392b'>做運動時，</span><span style='color:#27ae60'>將安全</span><span style='color:#d35400'>牢記在心</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>keep sth. in mind</b>：把某事記在心裡。"
+            },
+            {
+                chunks: ["It seems", "too good", "to be", "true."],
+                translationHtml: "中譯：<span style='color:#2980b9'>這似乎</span><span style='color:#27ae60'>好過頭了</span><span style='color:#d35400'>以至於不可能是</span><span style='color:#8e44ad'>真的</span>。",
+                tip: "💡 <b>搭配詞與亮點：</b><br>1. <b>too + adj. + to V.</b>：太...以至於不能...<br>2. It's too good to be true = 好到令人難以置信。"
+            }
+        ]
+    };
+
+    let currentSection = 'p137';
+    let currentQIndex = 0;
+    let selectedOrder = []; 
+    let poolWords = [];     
+    let failCount = 0;
+
+    const mainContainer = document.getElementById('main-container');
+    const answerZone = document.getElementById('answer-zone');
+    const wordPool = document.getElementById('word-pool');
+    const feedbackZone = document.getElementById('feedback-zone');
+    const checkBtn = document.getElementById('check-btn');
+
+    function switchTab(section) {
+        currentSection = section;
+        document.getElementById('tab-p137').classList.remove('active');
+        document.getElementById('tab-p139').classList.remove('active');
+        document.getElementById(`tab-${section}`).classList.add('active');
+        currentQIndex = 0;
+        initGame();
+    }
+
+    function initGame() {
+        const questions = questionData[currentSection];
+        failCount = 0;
+        document.getElementById('progress-text').innerText = `題目 ${currentQIndex + 1} / ${questions.length}`;
+        
+        let currentQ = questions[currentQIndex];
+        
+        let mappedChunks = currentQ.chunks.map((text, idx) => {
+            return { text: text, origIndex: idx };
+        });
+
+        // 隨機打亂水池排序
+        poolWords = [...mappedChunks].sort(() => Math.random() - 0.5);
+        selectedOrder = [];
+
+        feedbackZone.className = 'feedback';
+        checkBtn.disabled = true;
+        document.getElementById('audio-btn').style.display = 'none';
+        render();
+    }
+
+    function render() {
+        answerZone.innerHTML = '';
+        wordPool.innerHTML = '';
+
+        selectedOrder.forEach((item, index) => {
+            const block = document.createElement('div');
+            block.className = `chunk color-${item.origIndex}`;
+            block.innerText = item.text;
+            block.onclick = () => moveToPool(index);
+            answerZone.appendChild(block);
+        });
+
+        poolWords.forEach((item, index) => {
+            const block = document.createElement('div');
+            block.className = `chunk color-${item.origIndex}`;
+            block.innerText = item.text;
+            block.onclick = () => moveToAnswer(index);
+            wordPool.appendChild(block);
+        });
+
+        checkBtn.disabled = (poolWords.length !== 0);
+    }
+
+    function moveToAnswer(poolIndex) {
+        feedbackZone.className = 'feedback';
+        const item = poolWords.splice(poolIndex, 1)[0];
+        selectedOrder.push(item);
+        render();
+    }
+
+    function moveToPool(answerIndex) {
+        feedbackZone.className = 'feedback';
+        const item = selectedOrder.splice(answerIndex, 1)[0];
+        poolWords.push(item);
+        render();
+    }
+
+    function playCurrentTTS() {
+        const currentQ = questionData[currentSection][currentQIndex];
+        playTTS(currentQ.chunks.join(' '));
+    }
+
+    function checkAnswer() {
+        const currentQ = questionData[currentSection][currentQIndex];
+        
+        let isCorrect = true;
+        for(let i = 0; i < selectedOrder.length; i++) {
+            if(selectedOrder[i].origIndex !== i) {
+                isCorrect = false;
+                break;
+            }
+        }
+
+        const msgBox = document.getElementById('feedback-msg');
+        const hintBox = document.getElementById('hint-msg');
+        const translationBox = document.getElementById('translation-text');
+        const tipsBox = document.getElementById('tips-text');
+        const nextBtn = document.getElementById('next-btn');
+        const audioBtn = document.getElementById('audio-btn');
+
+        if(isCorrect) {
+            playCorrectSound();
+            confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+            
+            feedbackZone.className = 'feedback correct';
+            msgBox.innerHTML = '🎉 太棒了！順序完全正確！';
+            msgBox.style.color = '#2E7D32';
+            hintBox.innerHTML = '';
+            
+            translationBox.innerHTML = currentQ.translationHtml;
+            tipsBox.innerHTML = currentQ.tip;
+            
+            checkBtn.style.display = 'none';
+            audioBtn.style.display = 'inline-block';
+            nextBtn.style.display = 'inline-block';
+            
+            setTimeout(playCurrentTTS, 400);
+            
+        } else {
+            failCount++;
+            playWrongSound();
+            
+            mainContainer.classList.remove('shake');
+            void mainContainer.offsetWidth;
+            mainContainer.classList.add('shake');
+
+            feedbackZone.className = 'feedback wrong';
+            msgBox.innerHTML = '💪 順序不對唷！再試一次，你可以的！';
+            msgBox.style.color = '#C62828';
+            translationBox.innerText = '';
+            tipsBox.innerHTML = '';
+            nextBtn.style.display = 'none';
+            audioBtn.style.display = 'none';
+
+            let hintHtml = `🔍 <b>作答提示：</b> 句子的第一個積木應該是 <b><span class="color-${0}" style="padding:2px 6px; border-radius:4px;">${currentQ.chunks[0]}</span></b>`;
+            if(failCount >= 2) {
+                hintHtml += ` ，緊接著第二個是 <b><span class="color-${1}" style="padding:2px 6px; border-radius:4px;">${currentQ.chunks[1]}</span></b>`;
+                setTimeout(playCurrentTTS, 400);
+            }
+            hintBox.innerHTML = hintHtml;
+        }
+    }
+
+    function nextQuestion() {
+        currentQIndex++;
+        const questions = questionData[currentSection];
+        
+        if(currentQIndex >= questions.length) {
+            alert("🎉 恭喜你！完成本區塊所有練習了！");
+            currentQIndex = 0; 
+        }
+        
+        checkBtn.style.display = 'inline-block';
+        window.speechSynthesis.cancel();
+        initGame();
+    }
+
+    initGame();
+</script>
+</body>
+</html>
